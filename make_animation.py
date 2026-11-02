@@ -1,7 +1,6 @@
 """Reproduce with: uv sync --locked; uv run make_animation.py.
 Requires ffmpeg on PATH. No character labels are used in DTW.
 """
-from pathlib import Path
 import json
 import numpy as np
 import matplotlib
@@ -9,39 +8,17 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
-from matplotlib.animation import FFMpegWriter
-from HersheyFonts import HersheyFonts
 from dtw import dtw
 
-OUT = Path(__file__).resolve().parent / 'outputs'
-OUT.mkdir(parents=True, exist_ok=True)
-TEXT = 'dynamic time warping'
-BLUE, ORANGE, GOLD = '#54c6ff', '#ffad75', '#f3e29b'
-BG, FG, MUTED = '#0c1422', '#e9f0f8', '#93a4ba'
+from animation_common import (
+    OUT, BLUE, ORANGE, GOLD, FG, MUTED,
+    trajectories, segments, configure_style, video_writer,
+)
 
-def trajectory(font, spacing):
-    """Return ordered (x, y) samples and their stroke IDs for one font."""
-    f = HersheyFonts(); f.load_default_font(font); f.normalize_rendering(1)
-    strokes = [np.asarray(s, float) for s in f.strokes_for_text(TEXT)]
-    allpts = np.vstack(strokes)
-    # Common text width and common vertical scale; no per-letter alignment.
-    lo, hi = allpts[:,0].min(), allpts[:,0].max()
-    strokes = [np.column_stack(((s[:,0]-lo)/(hi-lo)*14, s[:,1]-.25)) for s in strokes]
-    samples, ids = [], []
-    for sid, s in enumerate(strokes):
-        samples.append(s[0]); ids.append(sid)
-        for a,b in zip(s[:-1],s[1:]):
-            # Subdivide each original segment so no sample gap exceeds spacing.
-            # Vertex order is retained; samples define a synthetic pen clock.
-            n = max(1,int(np.ceil(np.linalg.norm(b-a)/spacing)))
-            for t in np.linspace(0,1,n+1)[1:]:
-                samples.append(a+t*(b-a)); ids.append(sid)
-    # Pen-up is a jump, not an interpolated ink stroke. Stroke id is only for drawing.
-    return np.array(samples), np.array(ids)
+OUT.mkdir(parents=True, exist_ok=True)
 
 # 1. Sample both fonts independently; each row is one two-channel observation.
-A, sa = trajectory('futural', .075)
-B, sb = trajectory('timesi', .065)
+A, sa, B, sb = trajectories()
 
 # ============================================================================
 # 2. DTW ALIGNMENT: compute the complete optimal correspondence before rendering.
@@ -73,7 +50,7 @@ metrics={'font_A':'futural','font_B':'timesi','samples_A':len(A),'samples_B':len
 (OUT/'metrics.json').write_text(json.dumps(metrics,indent=2))
 print(metrics, flush=True)
 # 4. Build the lettering, local-cost, and aligned-coordinate panels.
-plt.rcParams.update({'font.family':'DejaVu Sans','text.color':FG,'axes.labelcolor':MUTED,'xtick.color':MUTED,'ytick.color':MUTED,'font.size':10,'axes.facecolor':BG,'figure.facecolor':BG,'axes.edgecolor':'#334359'})
+configure_style()
 fig=plt.figure(figsize=(14.4,9),dpi=100)
 fig.text(.05,.95,'DYNAMIC TIME WARPING',fontsize=25,weight='bold')
 fig.text(.05,.913,'The same words. Two vector fonts. One monotone correspondence.',fontsize=13,color=MUTED)
@@ -81,10 +58,6 @@ ax=fig.add_axes([.05,.51,.90,.35]); ax.set_xlim(-.2,14.2); ax.set_ylim(-.4,3.5);
 # Separate the lettering rows visually only, after DTW has been computed.
 shiftA, shiftB = 2.0,0.0
 
-def segments(P, ids, shift):
-    """Build drawable segments, excluding jumps between distinct pen strokes."""
-    seg=np.stack([P[:-1],P[1:]],axis=1); seg[:,:,1]+=shift
-    return seg[ids[:-1]==ids[1:]], np.flatnonzero(ids[:-1]==ids[1:])+1
 segA, endsA=segments(A,sa,shiftA); segB,endsB=segments(B,sb,shiftB)
 for seg,c in [(segA,BLUE),(segB,ORANGE)]: ax.add_collection(LineCollection(seg,colors=c,alpha=.22,linewidths=1.4))
 inkA=LineCollection([],colors=BLUE,linewidths=2.1); inkB=LineCollection([],colors=ORANGE,linewidths=2.1)
@@ -136,7 +109,7 @@ def update(k):
 
 # 5. Encode one frame per matched pair, with extra holds at the endpoints.
 fps=30
-writer=FFMpegWriter(fps=fps,codec='libx264',bitrate=2200,extra_args=['-pix_fmt','yuv420p','-movflags','+faststart'])
+writer=video_writer(fps=fps)
 with writer.saving(fig,str(OUT/'dtw_text_alignment.mp4'),100):
     update(0)
     for _ in range(20):writer.grab_frame()

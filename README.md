@@ -9,11 +9,13 @@ Install `uv` and ffmpeg, then run from the repository root:
 ```bash
 uv sync --locked
 uv run make_animation.py
+uv run make_open_end_animation.py
 ```
 
 `uv` installs the Python 3.14 interpreter selected by `.python-version` if needed and manages the project environment and dependencies using `pyproject.toml` and `uv.lock`. ffmpeg must be available on your `PATH`.
 
 Generated files are saved in `outputs/` next to the script. The directory is created automatically.
+Both scripts can run independently; they share sampling and rendering helpers in `animation_common.py`.
 
 This uses the DTW suite's Python implementation, **dtw-python**, imported as `from dtw import dtw`. It is the Python port of the R `dtw` package, not the unrelated PyPI package named `dtw`.
 
@@ -41,6 +43,12 @@ Every DTW matched pair appears in one video frame (30 pairs per second), with pa
 
 Different fonts have different stroke counts and stroke orders. Coordinate-only DTW can therefore produce imperfect matches; it is not character recognition and does not guarantee semantic stroke correspondence.
 
+## Open-end animation
+
+`make_open_end_animation.py` recomputes `dtw(A[:n], B, step_pattern='symmetric2', open_end=True)` for each growing query prefix. Both coordinates use Euclidean distance, as above. The start remains fixed, while the reference endpoint minimizes the cumulative cost divided by `n + j + 1` (zero-based endpoint `j`).
+
+Each frame shows one complete alignment, rather than one pair from a fixed path. Earlier matches can change, and the selected reference endpoint can move backward. The lower panels show the current path and endpoint history. There are 520 frames at 30 fps, with no extra endpoint holds.
+
 ## Files
 
 - `outputs/dtw_text_alignment.mp4`: full animation, one frame per match
@@ -48,6 +56,11 @@ Different fonts have different stroke counts and stroke orders. Coordinate-only 
 - `make_animation.py`: reproducible source
 - `outputs/alignment.npz`: coordinates, stroke IDs, both alignment index arrays, and local cost matrix
 - `outputs/metrics.json`: sample counts and normalized distance
+- `make_open_end_animation.py`: open-end animation source
+- `animation_common.py`: shared trajectory sampling, stroke geometry, style, and video encoding
+- `outputs/dtw_open_end.mp4`: one fresh open-end alignment per frame
+- `outputs/dtw_open_end_preview.png`: open-end still preview
+- `outputs/dtw_open_end_metrics.json`: query size, selected reference endpoint, path length, and normalized distance for each frame
 
 ## References
 
