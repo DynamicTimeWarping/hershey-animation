@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import numpy as np
 import matplotlib
+# Render directly to files without requiring a graphical display.
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
@@ -19,6 +20,7 @@ BLUE, ORANGE, GOLD = '#54c6ff', '#ffad75', '#f3e29b'
 BG, FG, MUTED = '#0c1422', '#e9f0f8', '#93a4ba'
 
 def trajectory(font, spacing):
+    """Return ordered (x, y) samples and their stroke IDs for one font."""
     f = HersheyFonts(); f.load_default_font(font); f.normalize_rendering(1)
     strokes = [np.asarray(s, float) for s in f.strokes_for_text(TEXT)]
     allpts = np.vstack(strokes)
@@ -29,30 +31,58 @@ def trajectory(font, spacing):
     for sid, s in enumerate(strokes):
         samples.append(s[0]); ids.append(sid)
         for a,b in zip(s[:-1],s[1:]):
+            # Subdivide each original segment so no sample gap exceeds spacing.
+            # Vertex order is retained; samples define a synthetic pen clock.
             n = max(1,int(np.ceil(np.linalg.norm(b-a)/spacing)))
             for t in np.linspace(0,1,n+1)[1:]:
                 samples.append(a+t*(b-a)); ids.append(sid)
     # Pen-up is a jump, not an interpolated ink stroke. Stroke id is only for drawing.
     return np.array(samples), np.array(ids)
 
+# 1. Sample both fonts independently; each row is one two-channel observation.
 A, sa = trajectory('futural', .075)
 B, sb = trajectory('timesi', .065)
-alignment = dtw(A, B, dist_method='euclidean', step_pattern='symmetric2', keep_internals=True)
+
+# ============================================================================
+# 2. DTW ALIGNMENT: compute the complete optimal correspondence before rendering.
+# ============================================================================
+# Local cost c(i, j) is the Euclidean distance between A[i] and B[j], using
+# both x and y. Stroke IDs and the display offsets below do not enter the cost.
+# With symmetric2, the cumulative cost follows:
+# D(i, j) = min(D(i-1, j) + c, D(i, j-1) + c, D(i-1, j-1) + 2*c).
+# The default global alignment connects the first and last samples with no
+# window constraint. Horizontal/vertical steps repeat one sample; diagonal
+# steps advance both. No character or stroke correspondence is supplied.
+alignment = dtw(
+    A, B,
+    dist_method='euclidean',
+    step_pattern='symmetric2',
+    keep_internals=True,  # Retain the local cost matrix for export and plotting.
+)
+# Each pair (ii[k], jj[k]) matches A[ii[k]] with B[jj[k]]. These arrays are
+# the warping path and define the shared clock used by every animation panel.
 ii, jj = alignment.index1, alignment.index2
+# Check endpoint coverage and monotone unit steps along each input sequence.
 assert (ii[0],jj[0]) == (0,0) and (ii[-1],jj[-1]) == (len(A)-1,len(B)-1)
 assert np.all(np.isin(np.diff(ii),[0,1])) and np.all(np.isin(np.diff(jj),[0,1]))
+
+# 3. Save the numerical result independently of the rendered animation.
+# symmetric2 normalizes the weighted cumulative distance by len(A) + len(B).
 np.savez_compressed(OUT/'alignment.npz', A=A, B=B, stroke_A=sa, stroke_B=sb, index_A=ii,index_B=jj, local_cost=alignment.localCostMatrix)
 metrics={'font_A':'futural','font_B':'timesi','samples_A':len(A),'samples_B':len(B),'matched_pairs':len(ii),'normalized_distance':float(alignment.normalizedDistance)}
 (OUT/'metrics.json').write_text(json.dumps(metrics,indent=2))
 print(metrics, flush=True)
+# 4. Build the lettering, local-cost, and aligned-coordinate panels.
 plt.rcParams.update({'font.family':'DejaVu Sans','text.color':FG,'axes.labelcolor':MUTED,'xtick.color':MUTED,'ytick.color':MUTED,'font.size':10,'axes.facecolor':BG,'figure.facecolor':BG,'axes.edgecolor':'#334359'})
 fig=plt.figure(figsize=(14.4,9),dpi=100)
 fig.text(.05,.95,'DYNAMIC TIME WARPING',fontsize=25,weight='bold')
 fig.text(.05,.913,'The same words. Two vector fonts. One monotone correspondence.',fontsize=13,color=MUTED)
 ax=fig.add_axes([.05,.51,.90,.35]); ax.set_xlim(-.2,14.2); ax.set_ylim(-.4,3.5); ax.set_aspect('equal'); ax.axis('off')
+# Separate the lettering rows visually only, after DTW has been computed.
 shiftA, shiftB = 2.0,0.0
 
 def segments(P, ids, shift):
+    """Build drawable segments, excluding jumps between distinct pen strokes."""
     seg=np.stack([P[:-1],P[1:]],axis=1); seg[:,:,1]+=shift
     return seg[ids[:-1]==ids[1:]], np.flatnonzero(ids[:-1]==ids[1:])+1
 segA, endsA=segments(A,sa,shiftA); segB,endsB=segments(B,sb,shiftB)
@@ -75,6 +105,8 @@ cp,=cax.plot([],[],'o',color=FG,ms=5)
 cax.set_title('LOCAL DISTANCE + OPTIMAL WARPING PATH',loc='left',color=FG,fontsize=11,pad=13)
 cax.set_xlabel('A sample index  i');cax.set_ylabel('B sample index  j')
 cax.text(.02,.95,'light = closer coordinates',transform=cax.transAxes,color=FG,fontsize=9,va='top')
+# Reindex both y signals by the path; repeated indices show DTW holds.
+# This panel displays y only, although the alignment above uses both x and y.
 tax=fig.add_axes([.55,.115,.40,.29])
 k=np.arange(len(ii))
 tax.plot(k,A[ii,1],color=BLUE,alpha=.8,lw=.8,label='A: y(i)')
@@ -89,10 +121,12 @@ tax.spines[['top','right']].set_visible(False)
 fig.text(.05,.036,'DTW uses (x, y) Euclidean distance • symmetric2 steps • pen-up moves are jumps • display rows are offset only',fontsize=10,color=MUTED)
 
 def update(k):
+    """Reveal matched pair k on the already computed path in all three panels."""
     i,j=int(ii[k]),int(jj[k]); a=A[i]+[0,shiftA];b=B[j]+[0,shiftB]
     inkA.set_segments(segA[endsA<=i]);inkB.set_segments(segB[endsB<=j])
     pa.set_data([a[0]],[a[1]]);pb.set_data([b[0]],[b[1]])
     link.set_data([a[0],b[0]],[a[1],b[1]])
+    # Show a sparse recent correspondence trail to keep the lettering legible.
     recent=np.arange(max(0,k-70),k+1,7)
     links.set_segments(np.stack([A[ii[recent]]+[0,shiftA],B[jj[recent]]+[0,shiftB]],axis=1))
     trail.set_data(ii[:k+1],jj[:k+1]);cp.set_data([i],[j])
@@ -100,6 +134,7 @@ def update(k):
     action='START' if k==0 else ('B advances / A holds' if ii[k]==ii[k-1] else 'A advances / B holds' if jj[k]==jj[k-1] else 'Both advance')
     status.set_text(f'PAIR {k+1:4d}/{len(ii)}     A[{i:4d}] ↔ B[{j:4d}]     {action}')
 
+# 5. Encode one frame per matched pair, with extra holds at the endpoints.
 fps=30
 writer=FFMpegWriter(fps=fps,codec='libx264',bitrate=2200,extra_args=['-pix_fmt','yuv420p','-movflags','+faststart'])
 with writer.saving(fig,str(OUT/'dtw_text_alignment.mp4'),100):
@@ -109,6 +144,7 @@ with writer.saving(fig,str(OUT/'dtw_text_alignment.mp4'),100):
         update(k);writer.grab_frame()
         if k%250==0: print('frame',k,flush=True)
     for _ in range(60):writer.grab_frame()
+# Use the midpoint of the warping path for the still preview.
 update(len(ii)//2);fig.savefig(OUT/'preview.png',dpi=100)
 plt.close(fig)
 print('Done',flush=True)
