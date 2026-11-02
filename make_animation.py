@@ -34,7 +34,7 @@ alignment = dtw(
     A, B,
     dist_method='euclidean',
     step_pattern='symmetric2',
-    keep_internals=True,  # Retain the local cost matrix for export and plotting.
+    keep_internals=True,  # Retain the local cost matrix for plotting.
 )
 # Each pair (ii[k], jj[k]) matches A[ii[k]] with B[jj[k]]. These arrays are
 # the warping path and define the shared clock used by every animation panel.
@@ -43,9 +43,8 @@ ii, jj = alignment.index1, alignment.index2
 assert (ii[0],jj[0]) == (0,0) and (ii[-1],jj[-1]) == (len(A)-1,len(B)-1)
 assert np.all(np.isin(np.diff(ii),[0,1])) and np.all(np.isin(np.diff(jj),[0,1]))
 
-# 3. Save the numerical result independently of the rendered animation.
+# 3. Save summary metrics independently of the rendered animation.
 # symmetric2 normalizes the weighted cumulative distance by len(A) + len(B).
-np.savez_compressed(OUT/'alignment.npz', A=A, B=B, stroke_A=sa, stroke_B=sb, index_A=ii,index_B=jj, local_cost=alignment.localCostMatrix)
 metrics={'font_A':'futural','font_B':'timesi','samples_A':len(A),'samples_B':len(B),'matched_pairs':len(ii),'normalized_distance':float(alignment.normalizedDistance)}
 (OUT/'metrics.json').write_text(json.dumps(metrics,indent=2))
 print(metrics, flush=True)

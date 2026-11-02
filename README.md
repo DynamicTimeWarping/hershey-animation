@@ -54,7 +54,6 @@ Each frame shows one complete alignment, rather than one pair from a fixed path.
 - `outputs/dtw_text_alignment.mp4`: full animation, one frame per match
 - `outputs/preview.png`: still preview
 - `make_animation.py`: reproducible source
-- `outputs/alignment.npz`: coordinates, stroke IDs, both alignment index arrays, and local cost matrix
 - `outputs/metrics.json`: sample counts and normalized distance
 - `make_open_end_animation.py`: open-end animation source
 - `animation_common.py`: shared trajectory sampling, stroke geometry, style, and video encoding
