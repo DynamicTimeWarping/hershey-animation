@@ -4,12 +4,16 @@ The exact text `dynamic time warping` is rendered as Hershey `futural` and `time
 
 ## Run
 
-Install Python 3.12+, ffmpeg, and the Python dependencies:
+Install `uv` and ffmpeg, then run from the repository root:
 
+```bash
+uv sync --locked
+uv run make_animation.py
 ```
-pip install -r requirements.txt
-python make_animation.py
-```
+
+`uv` installs the Python 3.14 interpreter selected by `.python-version` if needed and manages the project environment and dependencies using `pyproject.toml` and `uv.lock`. ffmpeg must be available on your `PATH`.
+
+Generated files are saved in `outputs/` next to the script. The directory is created automatically.
 
 This uses the DTW suite's Python implementation, **dtw-python**, imported as `from dtw import dtw`. It is the Python port of the R `dtw` package, not the unrelated PyPI package named `dtw`.
 
@@ -39,11 +43,11 @@ Different fonts have different stroke counts and stroke orders. Coordinate-only 
 
 ## Files
 
-- `dtw_text_alignment.mp4`: full animation, one frame per match
-- `dtw_text_alignment.gif`: reduced-size preview (temporal downsampling)
+- `outputs/dtw_text_alignment.mp4`: full animation, one frame per match
+- `outputs/preview.png`: still preview
 - `make_animation.py`: reproducible source
-- `alignment.npz`: coordinates, stroke IDs, both alignment index arrays, and local cost matrix
-- `metrics.json`: sample counts and normalized distance
+- `outputs/alignment.npz`: coordinates, stroke IDs, both alignment index arrays, and local cost matrix
+- `outputs/metrics.json`: sample counts and normalized distance
 
 ## References
 

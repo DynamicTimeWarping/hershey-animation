@@ -1,4 +1,4 @@
-"""Reproduce with: pip install -r requirements.txt; python make_animation.py.
+"""Reproduce with: uv sync --locked; uv run make_animation.py.
 Requires ffmpeg on PATH. No character labels are used in DTW.
 """
 from pathlib import Path
@@ -12,7 +12,8 @@ from matplotlib.animation import FFMpegWriter
 from HersheyFonts import HersheyFonts
 from dtw import dtw
 
-OUT = Path(__file__).resolve().parent
+OUT = Path(__file__).resolve().parent / 'outputs'
+OUT.mkdir(parents=True, exist_ok=True)
 TEXT = 'dynamic time warping'
 BLUE, ORANGE, GOLD = '#54c6ff', '#ffad75', '#f3e29b'
 BG, FG, MUTED = '#0c1422', '#e9f0f8', '#93a4ba'
